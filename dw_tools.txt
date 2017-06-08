@@ -1,0 +1,312 @@
+Sub expandDetails(pvt As PivotTable, aggCol, max_rows, Optional flag_col = "")
+'assumes that there is a pivot table on the activesheet that has some fields visible
+Dim sht As Worksheet, cl As Range
+Application.ScreenUpdating = False
+Application.DisplayAlerts = False
+Set sht = pvt.Parent
+
+
+'get name of pivot table and the top row of it
+'Set pvt = sht.PivotTables.Item(1)
+hdrRow = pvt.RowRange.Row  'only works if there are fields in the pivot table, leaving it here for reference right now
+
+'get some other info
+dtHdrRow = 3 'this is the row containing the headers for the detail pages
+'get info about this sheet
+shtLR = Split(sht.UsedRange.Address, "$", 5)(4)
+shtLC = Split(sht.UsedRange.Address, "$", 5)(3)
+'tell the user how many sheets will be made and ask if they still want to proceed
+setDetailMaxRows max_rows
+'If show_msg = True Then
+'    If MsgBox("This macro will create " & shtLR - hdrRow & " new sheets in this workbook, proceed?", vbYesNo, ttl) = vbNo Then
+'        Exit Sub
+'    End If
+'End If
+'assumes you filtered already
+i = 0
+For Each cl In sht.Range(aggCol & hdrRow + 1 & ":" & aggCol & shtLR).SpecialCells(xlCellTypeVisible)
+    If Not (LCase(sht.Range("A" & cl.Row).Value) Like "*total*") Then
+        cl.ShowDetail = True
+        ActiveSheet.Name = "Detail " & i
+        i = i + 1
+        'add flag if appropriate
+        If flag_col <> "" Then
+            flag = sht.Range(flag_col & cl.Row).Value
+            Application.CalculateUntilAsyncQueriesDone
+            LR = Split(ActiveSheet.UsedRange.Address, "$", 5)(4)
+            LC = Split(ActiveSheet.[a3].End(xlToRight).Offset(0, 1).Address, "$", 3)(1)
+            ActiveSheet.Range(LC & "3").Value = sht.Range(flag_col & hdrRow).Value
+            ActiveSheet.Range(LC & "4:" & LC & LR).FormulaArray = flag
+        End If
+    End If
+Next cl
+'return to the control panel sheet
+sht.Activate
+End Sub
+'==================================================================================================
+
+Sub aggDetails(sht As Worksheet, smrname, clear_smr)
+Dim smr As Worksheet, det As Worksheet
+'sht should be the sheet with the DW but it really doesn't matter as it is just a reference of where to put the output
+'sheet if it doesn't already exist
+'Set sht = ActiveSheet
+Application.ScreenUpdating = False
+Application.DisplayAlerts = False
+'detail sheet parameter, the header row for detail sheets is always 3 as of 2017-02-15
+dtHdrRow = 3
+'proceed
+If WorksheetExists(CStr(smrname)) Then
+    Set smr = Sheets(smrname)
+Else
+    Set smr = ActiveWorkbook.Sheets.Add(After:=sht)
+    smr.Name = smrname
+End If
+If clear_smr = True Then
+    smrLR = 0
+    smr.Cells.Clear
+Else
+    smrLR = Split(smr.UsedRange.Address, "$", 5)(4)
+End If
+For Each det In ActiveWorkbook.Sheets
+    If det.Name Like "Detail*" Then
+        detLR = Split(det.UsedRange.Address, "$", 5)(4)
+        detLC = Split(det.UsedRange.Address, "$", 5)(3)
+        If smrLR = 0 Then
+            copRow = dtHdrRow
+        Else
+            copRow = dtHdrRow + 1
+        End If
+        det.Range("A" & copRow & ":" & detLC & detLR).Copy smr.Range("A" & smrLR + 1)
+        smrLR = Split(smr.UsedRange.Address, "$", 5)(4)
+        'If del_det = True Then
+            det.Delete
+        'End If
+    End If
+Next det
+Set det = Nothing
+
+'clean up the combined table
+undotable smr
+
+'remove extraneous detail from header names
+smr.Range(smr.[a1], smr.[a1].End(xlToRight)).Replace what:="[Clinical Queries].", replacement:="", lookat:=xlPart
+smr.Range(smr.[a1], smr.[a1].End(xlToRight)).Replace what:="[$Clinical Queries].", replacement:="", lookat:=xlPart
+smr.Range(smr.[a1], smr.[a1].End(xlToRight)).Replace what:="$Date.", replacement:="", lookat:=xlPart
+
+'convert datetime strings, leave them as their own columns next to the text versions
+On Error GoTo 0
+dtCols = Array(smr.Range("1:1").Find(what:="activity date time", lookat:=xlPart, MatchCase:=False).Column, _
+                smr.Range("1:1").Find(what:="entered date time", lookat:=xlPart, MatchCase:=False).Column)
+If dtCols(0) <> "" Then
+    addCols = Array(Split(smr.[a1].End(xlToRight).Offset(0, 1).Address, "$", 3)(1), Split(smr.[a1].End(xlToRight).Offset(0, 2).Address, "$", 3)(1))
+    smr.Range(addCols(0) & "2").Formula = "=datevalue(r[0]c" & dtCols(0) & ") + timevalue(r[0]c" & dtCols(0) & ")"
+    smr.Range(addCols(1) & "2").Formula = "=datevalue(r[0]c" & dtCols(1) & ") + timevalue(r[0]c" & dtCols(1) & ")"
+    smr.Range(addCols(0) & "2:" & addCols(1) & "2").NumberFormat = "m/d/yyyy h:mm:ss AM/PM"
+    smr.Range(addCols(0) & "2:" & addCols(1) & "2").AutoFill smr.Range(addCols(0) & "2:" & addCols(1) & smrLR)
+    smr.Range(addCols(0) & "2:" & addCols(1) & smrLR).Copy
+    smr.Range(addCols(0) & "2:" & addCols(1) & smrLR).PasteSpecial xlPasteValuesAndNumberFormats
+    smr.Range(addCols(0) & "1").Value = "activity datetime"
+    smr.Range(addCols(1) & "1").Value = "entered datetime"
+End If
+End Sub
+'==================================================================================================
+
+Sub setDetailMaxRows(maxRows, conFile as string)
+'fairly specific, will only work for the general quality model named "Model" (won't work for the EBM model or perspectives of the quality model)
+'also assumes that the current user stores this models data connection in Documents\My Data Sources\ and that it is .odc
+
+tmp2 = Split(Application.UserLibraryPath, "\", 4)
+basePath = tmp2(0) & "\" & tmp2(1) & "\" & tmp2(2) & "\"
+    With ActiveWorkbook.Connections(replace(conFile,".odc","")).OLEDBConnection
+        .CommandText = Array("Model")
+        .CommandType = xlCmdCube
+        .Connection = Array( _
+        "OLEDB;Provider=MSOLAP.4;Integrated Security=SSPI;Persist Security Info=True;Initial Catalog=Quality Outcomes;Data Source=" & _
+				split(conFile," ",2)(0) & ";", "MDX Compatibility=1;Safety Options=2;MDX Missing Member Mode=Error")
+        .RefreshOnFileOpen = False
+        .SavePassword = False
+        .SourceConnectionFile = basePath & "My Data Sources\" & conFile
+        .MaxDrillthroughRecords = maxRows
+        .ServerCredentialsMethod = xlCredentialsMethodIntegrated
+        .AlwaysUseConnectionFile = False
+        .RetrieveInOfficeUILang = True
+        .ServerFillColor = True
+        .ServerFontStyle = True
+        .ServerNumberFormat = True
+        .ServerTextColor = True
+    End With
+    With ActiveWorkbook.Connections(replace(conFile,".odc",""))
+        .Name = replace(conFile,".odc","")
+        .Description = ""
+    End With
+End Sub
+'==================================================================================================
+
+Sub filterTableBy(fltshtnm, shtCol, tbl, fld, pvt As PivotTable, Optional stRow = 2, Optional clearTable = False, Optional inclCol = False)
+'generic macro to filter a table by a column by a list of values that exist in that column.
+
+Dim fltsht As Worksheet
+
+'proceed with macro
+Set fltsht = Sheets(fltshtnm)
+fltshtLR = Split(fltsht.UsedRange.Address, "$", 5)(4)
+fltshtLC = Split(fltsht.UsedRange.Address, "$", 5)(3)
+
+'create an array of the unique accounts on the acct sheet
+'could probably just make a call to common_tools.rangeToArr
+acct = ""
+For Each cl In fltsht.Range(shtCol & stRow & ":" & shtCol & fltshtLR).SpecialCells(xlCellTypeVisible)
+    If Not acct Like "*" & cl.Value & "*" Then
+        'added check for inclusion
+        If inclCol Then
+            If cl.Offset(0, 1).Value Then
+                acct = acct & vbLf & "[" & tbl & "].[" & fld & "].&[" & cl.Value & "]"
+            End If
+        Else
+            acct = acct & vbLf & "[" & tbl & "].[" & fld & "].&[" & cl.Value & "]"
+        End If
+    End If
+Next cl
+acct = Right(acct, Len(acct) - 1)
+acct = Split(acct, vbLf, 1 + Len(acct) - Len(Replace(acct, vbLf, "")))
+
+'clearing the pivot table
+If clearTable Then
+    pvt.clearTable
+End If
+    
+'filter based on the list
+pvt.CubeFields("[" & tbl & "].[" & fld & "]").CreatePivotFields
+pvt.PivotFields("[" & tbl & "].[" & fld & "].[" & fld & "]").VisibleItemsList = acct
+
+'add account number and then assessment to the pivot table
+With pvt.CubeFields("[" & tbl & "].[" & fld & "]")
+    .Orientation = xlRowField
+    .position = 1
+End With
+
+End Sub
+'==================================================================================================
+
+Sub testAccountsInTable(pvt As PivotTable, acctsNm, acctCol, tbl, fld, Optional flt = False)
+'set the sheet variable and msgbox title, verify it is okay to proceed.
+ttl2 = "Account Table Tester"
+Set accts = Sheets(acctsNm)
+If MsgBox("This macro will write to the first column from the left that does not have a header on sheet '" & accts.Name & _
+    "' or will write to the 'In table?' column." & vbLf & vbLf & "Okay to proceed?", vbYesNo, ttl2) = vbYes Then
+    acctsLR = Split(accts.UsedRange.Address, "$", 5)(4)
+    Set cl = accts.Cells.Find(what:="In " & tbl & "?", lookat:=xlWhole, SearchOrder:=xlByRows)
+    If cl Is Nothing Then
+        If Split(accts.[a1].End(xlToRight).Address, "$", 3)(1) = "XFD" Then
+            writeCol = "b"
+        Else
+            writeCol = Split(accts.[a1].End(xlToRight).Offset(0, 1).Address, "$", 3)(1)
+        End If
+        accts.Range(writeCol & "1").Value = "In " & tbl & "?"
+    Else
+        writeCol = Split(cl.Address, "$", 3)(1)
+        accts.Range(writeCol & "2:" & writeCol & acctsLR).Clear
+    End If
+    
+    'loop through each and try it, if it fails then write a note in outer most column
+    pvt.CubeFields("[" & tbl & "].[" & fld & "]").CreatePivotFields
+    On Error Resume Next
+    For Each cl In accts.Range(acctCol & "2:" & acctCol & acctsLR).SpecialCells(xlCellTypeVisible)
+        pvt.PivotFields("[" & tbl & "].[" & fld & "].[" & fld & "]").VisibleItemsList = Array("[" & tbl & "].[" & fld & "].&[" & cl.Value & "]")
+        If Err.Description <> "" Then
+            accts.Range(writeCol & cl.Row).Value = False
+            Debug.Print Err.Description
+            Err.Clear
+        Else
+            accts.Range(writeCol & cl.Row).Value = True
+        End If
+    Next cl
+    On Error GoTo 0
+    If flt Then
+        accts.UsedRange.AutoFilter  'clear any previous filters
+        accts.Range("A1:" & writeCol & acctsLR).AutoFilter field:=accts.Range(writeCol & "1").Column, Criteria1:=True
+    End If
+    
+    MsgBox "Test complete!", vbInformation, ttl2
+Else
+    MsgBox "Canceled!", vbInformation, ttl2
+End If
+End Sub
+'==================================================================================================
+
+Private Sub undotable(smr As Worksheet)
+If smr.ListObjects.Count > 0 Then
+    smr.ListObjects(1).Unlist
+    smr.Cells.Interior.Pattern = xlNone
+    smr.Cells.Font.Color = vbBlack
+    smr.Cells.Borders().LineStyle = xlNone
+End If
+End Sub
+'==================================================================================================
+
+Sub removeSubtotals(pvt As PivotTable)
+pvt.RowAxisLayout xlTabularRow
+pvt.RepeatAllLabels xlRepeatLabels
+pvt.ColumnGrand = False
+pvt.RowGrand = False
+For Each pf In pvt.PivotFields
+    If pf.Caption <> "Values" Then
+        pf.Subtotals = Array(False, False, _
+            False, False, False, False, False, False, False, False, False, False)
+    End If
+Next pf
+End Sub
+'==================================================================================================
+
+Function ISOdateRange(dts, tbl, fld)
+    'function input for testing
+'    dts = Array(CDate("5/14/2017"), CDate("5/16/2017"))
+'    tbl = "Clinical Queries"
+'    fld = "Activity Date"
+    'begin
+    dt = dts(LBound(dts))
+    arr = ""
+    Do While dt <= dts(UBound(dts))
+        If arr = "" Then
+            arr = "[" & tbl & "].[" & fld & "].&[" & Format(dt, "yyyy-mm-dd") & "T00:00:00]"
+        Else
+            arr = arr & vbLf & "[" & tbl & "].[" & fld & "].&[" & Format(dt, "yyyy-mm-dd") & "T00:00:00]"
+        End If
+        dt = DateAdd("d", 1, dt)
+'        Debug.Print arr
+    Loop
+    ISOdateRange = Split(arr, vbLf, 1 + Len(arr) - Len(Replace(arr, vbLf, "")))
+End Function
+'==================================================================================================
+
+Sub addFieldToDW(pvt As PivotTable, tbl, fld, Optional fldOrient = xlRowField, Optional position = "", Optional preFilter = "")
+If UBound(Filter(Array(xlColumnField, xlDataField, xlHidden, xlPageField, xlRowField), fldOrient)) = -1 Then
+    Debug.Print Err
+Else
+    pvt.CubeFields("[" & tbl & "].[" & fld & "]").CreatePivotFields
+    If IsArray(preFilter) Then
+        'it has to be passed in as an array
+        For i = LBound(preFilter) To UBound(preFilter)
+            preFilter(i) = "[" & tbl & "].[" & fld & "].&[" & preFilter(i) & "]"
+        Next i
+        pvt.PivotFields("[" & tbl & "].[" & fld & "].[" & fld & "]").VisibleItemsList = preFilter
+    End If
+    pvt.CubeFields("[" & tbl & "].[" & fld & "]").Orientation = fldOrient
+    If position <> "" Then
+        pvt.CubeFields("[" & tbl & "].[" & fld & "]").position = position
+    End If
+End If
+End Sub
+'==================================================================================================
+
+Sub addFieldToPvt(pvt As PivotTable, fld, Optional fldOrient = xlRowField, Optional position = "")
+'not really for DW but I often work with both at the same time...
+If UBound(Filter(Array(xlColumnField, xlDataField, xlHidden, xlPageField, xlRowField), fldOrient)) = -1 Then
+    Debug.Print Err
+Else
+    pvt.PivotFields(fld).Orientation = fldOrient
+    If position <> "" Then
+        pvt.PivotFields(fld).position = position
+    End If
+End If
+End Sub
