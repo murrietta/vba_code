@@ -1,0 +1,243 @@
+Sub meltData(sht As Worksheet, varCols, Optional hdrRow = 1)
+Dim out As Worksheet, outcl As Range, cl As Range
+
+	'
+	'melts the variables specified by user in the given data
+	'the non melted variables will be listed first in the
+	'resultant data
+	'
+	'sht is a worksheet that contains the data to be melted
+	'varCols is an array of strings that are the names of the columns to melt in the original data
+	'hdrRow indicates the row containing the header for the data to be melted, default is 1
+	'
+	'holding off on making it a function right now as I don't want to build in error trapping
+	'
+
+	'begin function
+	Set out = Worksheets.Add(After:=sht)
+	shtLR = Split(sht.UsedRange.Address, "$", 5)(4)
+	shtLC = Split(sht.UsedRange.Address, "$", 5)(3)
+	'copy over the non varCols columns
+	Set outcl = out.[a1]
+	For Each cl In sht.Range("A" & hdrRow & ":" & shtLC & hdrRow)
+		If UBound(Filter(varCols, cl.Value)) = -1 Then
+			clCol = Split(cl.Address, "$", 3)(1)
+			sht.Range(clCol & "1:" & clCol & shtLR).Copy outcl
+			Set outcl = outcl.Offset(0, 1)
+		End If
+	Next cl
+	'now copy over the varcols but as a single column with a new column added to indicate what their original
+	'column was
+	Set outcl2 = outcl.Offset(0, 1) 'this cell will help us write the values, outcl will help us write the columns
+	outcl.Value = "variable"
+	outcl2.Value = "value"
+	meltLR = 1
+	meltLR0 = 1
+	For i = LBound(varCols) To UBound(varCols)
+		'melt varCol(i)
+		Set cl = sht.Rows(hdrRow & ":" & hdrRow).Find(what:=varCols(i), lookat:=xlWhole)
+		clCol = Split(cl.Address, "$", 3)(1)
+		outcl2Col = Split(outcl2.Address, "$", 3)(1)
+		sht.Range(clCol & hdrRow + 1 & ":" & clCol & shtLR).Copy out.Range(outcl2Col & meltLR + 1)
+		'assign last rows
+		meltLR0 = meltLR
+		meltLR = meltLR + shtLR - 1 'do it like this just in case we copy over a column that has missing values
+		'write the melted column's name
+		outclCol = Split(outcl.Address, "$", 3)(1)
+		out.Range(outclCol & meltLR0 + 1 & ":" & outclCol & meltLR).FormulaArray = varCols(i)
+		'repeat the common data
+		comCol = Split(outcl.Offset(0, -1).Address, "$", 3)(1) 'the last column of the common data (first is A)
+		out.Range("A2:" & comCol & shtLR).Copy out.Range("A" & meltLR0 + 1)
+	Next i
+End Sub
+'=============================================================================================
+
+Function WorksheetExists(WSName As String) As Boolean
+	On Error Resume Next
+	WorksheetExists = Worksheets(WSName).Name = WSName
+	On Error GoTo 0
+End Function
+'=============================================================================================
+
+Function IsWorkBookOpen(FileName As String)
+    Dim ff As Long, ErrNo As Long
+
+    On Error Resume Next
+    ff = FreeFile()
+    Open FileName For Input Lock Read As #ff
+    Close ff
+    ErrNo = Err
+    On Error GoTo 0
+
+    Select Case ErrNo
+    Case 0:    IsWorkBookOpen = False
+    Case 70:   IsWorkBookOpen = True
+    Case Else: Error ErrNo
+    End Select
+End Function
+'=============================================================================================
+
+Public Sub QuickSort(vArray As Variant, inLow As Long, inHi As Long)
+
+  Dim pivot   As Variant
+  Dim tmpSwap As Variant
+  Dim tmpLow  As Long
+  Dim tmpHi   As Long
+
+  tmpLow = inLow
+  tmpHi = inHi
+
+  pivot = vArray((inLow + inHi) \ 2)
+
+  While (tmpLow <= tmpHi)
+
+     While (vArray(tmpLow) < pivot And tmpLow < inHi)
+        tmpLow = tmpLow + 1
+     Wend
+
+     While (pivot < vArray(tmpHi) And tmpHi > inLow)
+        tmpHi = tmpHi - 1
+     Wend
+
+     If (tmpLow <= tmpHi) Then
+        tmpSwap = vArray(tmpLow)
+        vArray(tmpLow) = vArray(tmpHi)
+        vArray(tmpHi) = tmpSwap
+        tmpLow = tmpLow + 1
+        tmpHi = tmpHi - 1
+     End If
+
+  Wend
+
+  If (inLow < tmpHi) Then QuickSort vArray, inLow, tmpHi
+  If (tmpLow < inHi) Then QuickSort vArray, tmpLow, inHi
+
+End Sub
+'=============================================================================================
+
+Public Function WKDAYNAME(dt)
+WKDAYNAME = WeekdayName(Weekday(dt))
+End Function
+'=============================================================================================
+
+Function IsInArray(stringToBeFound As String, arr As Variant) As Boolean
+    IsInArray = (UBound(Filter(arr, stringToBeFound)) > -1)
+End Function
+'=============================================================================================
+
+Function ComplimentaryArray(arr, subArr)
+'returns false if subArr is not a proper subset of arr
+'returns the complimentary array if it is
+'first checks if the values of subArr are a proper subset of arr
+'second produces the compliment of subArr, that is, the remaining
+'values of arr that are not in subArr.
+    If (UBound(arr) - LBound(arr) + 1) = (UBound(subArr) - LBound(subArr) + 1) Then
+        ComplimentaryArray = False  'exits and returns false
+    Else
+        For i = LBound(subArr) To UBound(subArr)
+            If IsInArray(CStr(subArr(i)), arr) = False Then
+                ComplimentaryArray = False  'exits and returns false
+            End If
+        Next i
+        'if the code proceeds to this point then subArr is truly a subset of arr
+        ReDim tempArr(1 To (UBound(arr) - LBound(arr) + 1) - (UBound(subArr) - LBound(subArr) + 1))
+        j = 1
+        For i = LBound(arr) To UBound(arr)
+            If IsInArray(CStr(arr(i)), subArr) = False Then
+                tempArr(j) = arr(i)
+                j = j + 1
+            End If
+        Next i
+        ComplimentaryArray = tempArr  'exits and returns the complimentary array
+    End If
+End Function
+'=============================================================================================
+
+Sub GetDataFromADO()
+'remember to add the reference to Microsoft ActiveX Data Objects 2.1 or newer
+'the first line under "Open Connection" is an example connection string, the second line is the actual string. You must have all the contents of the example for this to work.
+'note that the Workstation ID entry just needs to be an id that exists on the network and not the actual id of your computer
+    'Declare variables'
+    Set objMyConn = New ADODB.Connection
+    Set objMyRecordset = New ADODB.Recordset
+    Dim strSQL As String, sht As Worksheet
+    Set sht = ActiveSheet
+    
+    If MsgBox("Write data to active worksheet? (Starting at cell A1)", vbYesNo, "SQL Server Data Pull") = vbYes Then
+        'Open Connection'
+'        objMyConn.ConnectionString = "Provider=SQLOLEDB;Data Source=localhost;Initial Catalog=MyDatabase;User ID=abc;Password=abc;"
+'        srvr = "CHCC-PI-DB-1"
+'        usrID = "**********"
+'        usrPass = "**********"
+        srvr = "CHCC-MCCM-WB1"
+        usrId = "*********"
+        usrPass = "**********"
+        objMyConn.ConnectionString = "Provider=SQLOLEDB.1;Persist Security Info=True;User ID=" & usrId & ";Data Source=" & srvr & ";" & _
+                                     "Use Procedure for Prepare=1;Auto Translate=True;Packet Size=4096;Workstation ID=PC1069069;" & _
+                                     "Use Encryption for Data=False;Tag with column collation when possible=False;Initial Catalog=medsurg;" & _
+                                     "Password=" & usrPass & ";"
+        objMyConn.Open
+    
+        'Set and Excecute SQL Command'
+'        strSQL = "select * from information_schema.columns;"    'get all columns and tables
+'        strSQL = "select * from case_record where cr_prdate >= '2016-01-01';"
+        strSQL = "select * from v_RPT_patient_allergies;" ' where cr_urn >= 164187;"
+    
+        'Open Recordset'
+        Set objMyRecordset.ActiveConnection = objMyConn
+        objMyRecordset.Open strSQL
+        
+        'Get column headers (got this from: http://stackoverflow.com/questions/4190515/pulling-column-names-into-excel-from-sql-query)
+        For intColIndex = 0 To objMyRecordset.Fields.Count - 1
+            sht.Range("A1").Offset(0, intColIndex).Value = objMyRecordset.Fields(intColIndex).Name
+        Next
+    
+        'Copy Data to Excel'
+        sht.Range("A2").CopyFromRecordset objMyRecordset
+    
+        objMyConn.Close
+        
+    End If
+End Sub
+'=============================================================================================
+
+Function HasComment(MyCell As Range)
+Set Targetcells = ActiveSheet.UsedRange.SpecialCells(xlCellTypeComments)
+If Application.Intersect(MyCell, Targetcells) Is Nothing Then
+    HasComment = False
+Else
+    HasComment = True
+End If
+End Function
+'=============================================================================================
+
+Function rangeToArr(rng As Range, Optional unique = False, Optional crit = "", Optional crit_offset = 0)
+'if using the crit option then you should specify crit_offset <> 0
+'crit and crit_offset look for criteria in a neighboring cell
+'once crit is used it assumes we are in a range structure where the criteria will always be on the same row
+'some certain number of columns away
+arr = ""
+For Each cl In rng
+    If unique Then
+        If Not ("*" & cl.Value & "*" Like arr) Then
+            If crit = "" Then
+                arr = arr & vbLf & cl.Value
+            Else
+                If cl.Offset(0, crit_offset).Value = crit Then
+                    arr = arr & vbLf & cl.Value
+                End If
+            End If
+        End If
+    Else
+        If crit = "" Then
+            arr = arr & vbLf & cl.Value
+        Else
+            If cl.Offset(0, crit_offset).Value = crit Then
+                arr = arr & vbLf & cl.Value
+            End If
+        End If
+    End If
+Next cl
+arr = Right(arr, Len(arr) - 1)
+rangeToArr = Split(arr, vbLf, 1 + Len(arr) - Len(Replace(arr, vbLf, "")))
+End Function
