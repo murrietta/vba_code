@@ -1,64 +1,60 @@
 Sub meltData(sht As Worksheet, varCols, Optional hdrRow = 1)
 Dim out As Worksheet, outcl As Range, cl As Range
 
-	'
-	'melts the variables specified by user in the given data
-	'the non melted variables will be listed first in the
-	'resultant data
-	'
-	'sht is a worksheet that contains the data to be melted
-	'varCols is an array of strings that are the names of the columns to melt in the original data
-	'hdrRow indicates the row containing the header for the data to be melted, default is 1
-	'
-	'holding off on making it a function right now as I don't want to build in error trapping
-	'
+'
+'melts the variables specified by user in the given data
+'the non melted variables will be listed first in the
+'resultant data
+'
+'sht is a worksheet that contains the data to be melted
+'varCols is an array of strings that are the names of the columns to melt in the original data
+'hdrRow indicates the row containing the header for the data to be melted, default is 1
+'
+'holding off on making it a function right now as I don't want to build in error trapping
+'
 
-	'begin function
-	Set out = Worksheets.Add(After:=sht)
-	shtLR = Split(sht.UsedRange.Address, "$", 5)(4)
-	shtLC = Split(sht.UsedRange.Address, "$", 5)(3)
-	'copy over the non varCols columns
-	Set outcl = out.[a1]
-	For Each cl In sht.Range("A" & hdrRow & ":" & shtLC & hdrRow)
-		If UBound(Filter(varCols, cl.Value)) = -1 Then
-			clCol = Split(cl.Address, "$", 3)(1)
-			sht.Range(clCol & "1:" & clCol & shtLR).Copy outcl
-			Set outcl = outcl.Offset(0, 1)
-		End If
-	Next cl
-	'now copy over the varcols but as a single column with a new column added to indicate what their original
-	'column was
-	Set outcl2 = outcl.Offset(0, 1) 'this cell will help us write the values, outcl will help us write the columns
-	outcl.Value = "variable"
-	outcl2.Value = "value"
-	meltLR = 1
-	meltLR0 = 1
-	For i = LBound(varCols) To UBound(varCols)
-		'melt varCol(i)
-		Set cl = sht.Rows(hdrRow & ":" & hdrRow).Find(what:=varCols(i), lookat:=xlWhole)
-		clCol = Split(cl.Address, "$", 3)(1)
-		outcl2Col = Split(outcl2.Address, "$", 3)(1)
-		sht.Range(clCol & hdrRow + 1 & ":" & clCol & shtLR).Copy out.Range(outcl2Col & meltLR + 1)
-		'assign last rows
-		meltLR0 = meltLR
-		meltLR = meltLR + shtLR - 1 'do it like this just in case we copy over a column that has missing values
-		'write the melted column's name
-		outclCol = Split(outcl.Address, "$", 3)(1)
-		out.Range(outclCol & meltLR0 + 1 & ":" & outclCol & meltLR).FormulaArray = varCols(i)
-		'repeat the common data
-		comCol = Split(outcl.Offset(0, -1).Address, "$", 3)(1) 'the last column of the common data (first is A)
-		out.Range("A2:" & comCol & shtLR).Copy out.Range("A" & meltLR0 + 1)
-	Next i
+'begin function
+Set out = Worksheets.Add(after:=sht)
+shtLR = Split(sht.UsedRange.Address, "$", 5)(4)
+shtLC = Split(sht.UsedRange.Address, "$", 5)(3)
+'copy over the non varCols columns
+Set outcl = out.[a1]
+For Each cl In sht.Range("A" & hdrRow & ":" & shtLC & hdrRow)
+    If UBound(Filter(varCols, cl.Value)) = -1 Then
+        clCol = Split(cl.Address, "$", 3)(1)
+        sht.Range(clCol & "1:" & clCol & shtLR).Copy outcl
+        Set outcl = outcl.Offset(0, 1)
+    End If
+Next cl
+'now copy over the varcols but as a single column with a new column added to indicate what their original
+'column was
+Set outcl2 = outcl.Offset(0, 1) 'this cell will help us write the values, outcl will help us write the columns
+outcl.Value = "variable"
+outcl2.Value = "value"
+meltLR = 1
+meltLR0 = 1
+For i = LBound(varCols) To UBound(varCols)
+    'melt varCol(i)
+    Set cl = sht.Rows(hdrRow & ":" & hdrRow).Find(what:=varCols(i), lookat:=xlWhole)
+    clCol = Split(cl.Address, "$", 3)(1)
+    outcl2Col = Split(outcl2.Address, "$", 3)(1)
+    sht.Range(clCol & hdrRow + 1 & ":" & clCol & shtLR).Copy out.Range(outcl2Col & meltLR + 1)
+    'assign last rows
+    meltLR0 = meltLR
+    meltLR = meltLR + shtLR - 1 'do it like this just in case we copy over a column that has missing values
+    'write the melted column's name
+    outclCol = Split(outcl.Address, "$", 3)(1)
+    out.Range(outclCol & meltLR0 + 1 & ":" & outclCol & meltLR).FormulaArray = varCols(i)
+    'repeat the common data
+    comCol = Split(outcl.Offset(0, -1).Address, "$", 3)(1) 'the last column of the common data (first is A)
+    out.Range("A2:" & comCol & shtLR).Copy out.Range("A" & meltLR0 + 1)
+Next i
 End Sub
-'=============================================================================================
-
 Function WorksheetExists(WSName As String) As Boolean
-	On Error Resume Next
-	WorksheetExists = Worksheets(WSName).Name = WSName
-	On Error GoTo 0
+On Error Resume Next
+WorksheetExists = Worksheets(WSName).Name = WSName
+On Error GoTo 0
 End Function
-'=============================================================================================
-
 Function IsWorkBookOpen(FileName As String)
     Dim ff As Long, ErrNo As Long
 
@@ -75,8 +71,6 @@ Function IsWorkBookOpen(FileName As String)
     Case Else: Error ErrNo
     End Select
 End Function
-'=============================================================================================
-
 Public Sub QuickSort(vArray As Variant, inLow As Long, inHi As Long)
 
   Dim pivot   As Variant
@@ -113,18 +107,12 @@ Public Sub QuickSort(vArray As Variant, inLow As Long, inHi As Long)
   If (tmpLow < inHi) Then QuickSort vArray, tmpLow, inHi
 
 End Sub
-'=============================================================================================
-
 Public Function WKDAYNAME(dt)
 WKDAYNAME = WeekdayName(Weekday(dt))
 End Function
-'=============================================================================================
-
 Function IsInArray(stringToBeFound As String, arr As Variant) As Boolean
     IsInArray = (UBound(Filter(arr, stringToBeFound)) > -1)
 End Function
-'=============================================================================================
-
 Function ComplimentaryArray(arr, subArr)
 'returns false if subArr is not a proper subset of arr
 'returns the complimentary array if it is
@@ -151,8 +139,6 @@ Function ComplimentaryArray(arr, subArr)
         ComplimentaryArray = tempArr  'exits and returns the complimentary array
     End If
 End Function
-'=============================================================================================
-
 Sub GetDataFromADO()
 'remember to add the reference to Microsoft ActiveX Data Objects 2.1 or newer
 'the first line under "Open Connection" is an example connection string, the second line is the actual string. You must have all the contents of the example for this to work.
@@ -199,8 +185,26 @@ Sub GetDataFromADO()
         
     End If
 End Sub
-'=============================================================================================
-
+Function ArrayMinus(arr, subArr)
+'returns array consisting of the contents of arr minus any of it's entries that were also in subArr
+'this function replaces the complimentaryArray function
+'this function requires access to the IsInArray function (found in mmaddins.module1)
+'ArrayMinusTest provides 6 tests on this function
+tmp = ""
+For i = LBound(arr) To UBound(arr)
+    If IsInArray(CStr(arr(i)), subArr) = False Then
+        tmp = tmp & arr(i) & vbLf
+    End If
+Next i
+If Len(tmp) > 0 Then
+    cnt = Len(tmp) - Len(Replace(tmp, vbLf, ""))
+    tmp = StrReverse(Split(StrReverse(tmp), vbLf, 2)(1))
+    tmp = Split(tmp, vbLf, cnt)
+Else
+    tmp = Array()
+End If
+ArrayMinus = tmp
+End Function
 Function HasComment(MyCell As Range)
 Set Targetcells = ActiveSheet.UsedRange.SpecialCells(xlCellTypeComments)
 If Application.Intersect(MyCell, Targetcells) Is Nothing Then
@@ -209,7 +213,7 @@ Else
     HasComment = True
 End If
 End Function
-'=============================================================================================
+
 
 Function rangeToArr(rng As Range, Optional unique = False, Optional crit = "", Optional crit_offset = 0)
 'if using the crit option then you should specify crit_offset <> 0
@@ -241,3 +245,99 @@ Next cl
 arr = Right(arr, Len(arr) - 1)
 rangeToArr = Split(arr, vbLf, 1 + Len(arr) - Len(Replace(arr, vbLf, "")))
 End Function
+Function addSheet(shtnm, Optional bk As Workbook = Nothing, Optional clear_cells = True) As Worksheet
+'depends on WorksheetExists
+If bk Is Nothing Then
+    Set bk = ActiveWorkbook
+Else
+    bk.Activate
+End If
+If WorksheetExists(CStr(shtnm)) Then
+    Set sht = Sheets(shtnm)
+    If clear_cells Then
+        sht.Cells.Clear
+    End If
+Else
+    Set sht = Sheets.Add
+    sht.Name = shtnm
+End If
+Set addSheet = sht
+End Function
+
+
+Function FillInRangeWithAbove(sht As Worksheet, col1, col2, hdr)
+'fills in "grouped" data: when columns only list data once and the columns near it list other data related to that one row in the other columns
+'this macro will fill in the columns that were listing the data once in a single row with the data in that single row
+    Dim cl1 As Range, cl2 As Range
+'    col1 = "A" 'the starting row of the contiguous range that needs data copied down
+'    col2 = "e" 'the end row of the contiguous range that needs data copied down
+'    hdRow = 5 'this should be the row containing the header
+    sht.UsedRange.AutoFilter
+    shtLR = Split(sht.UsedRange.Address, "$", 5)(4)
+    shtLC = Split(sht.UsedRange.Address, "$", 5)(3)
+    'Set cl1 = sht.Range("G" & hdRow).End(xlDown)
+    Set cl1 = sht.Range(col1 & hdr).End(xlDown)
+    Set cl2 = cl1.End(xlDown)
+    Do While Not cl1 Is Nothing
+        sht.Range(col1 & cl1.Row & ":" & col2 & cl1.Row).Copy sht.Range(col1 & cl1.Row & ":" & col2 & cl2.Row - 1)
+        Set cl1 = cl2
+        Set cl2 = cl2.End(xlDown)
+        If cl2.Row = 1048576 Or cl2.Row > shtLR Then
+            Set cl2 = sht.Range(col1 & shtLR)
+            sht.Range(col1 & cl1.Row & ":" & col2 & cl1.Row).Copy sht.Range(col1 & cl1.Row + 1 & ":" & col2 & cl2.Row - 1)
+            Exit Do
+        End If
+    Loop
+    sht.UsedRange.AutoFilter
+'    FillInRangeWithAbove = Array(shtLR, shtLC)
+End Function
+
+Sub fillInFormula(sht As Worksheet, frmula, Optional ttl, Optional hdrRow = 1, _
+                    Optional stCol = "a", Optional asValues = True, Optional repCol = "", _
+                    Optional addCol = "", Optional shtLR = "", Optional fmt = "")
+
+'hdrRow is the row the header is in
+'stCol is the column the dataset begins on
+'if asValues is True then copy the output of the formula and paste as values else we leave as formula
+'if repCol is blank then just leave output in addCol
+'if addCol is blank then addCol will be the next column to the right of the data that is empty based on range(hdrRow & ":" & hdrRow).end(xltoright).offset(0,1)
+'if shtLR is blank then we just calculate it based on the usedrange in sht
+
+'calculate addCol
+If addCol = "" Then
+    addCol = Split(sht.Range(stCol & hdrRow).End(xlToRight).Offset(0, 1).Address, "$", 3)(1)
+End If
+
+'calculate shtLR
+If shtLR = "" Then
+    shtLR = Split(sht.UsedRange.Address, "$", 5)(4)
+End If
+
+'apply formula
+sht.Range(addCol & hdrRow).Value = ttl
+With sht.Range(addCol & hdrRow + 1 & ":" & addCol & shtLR)
+    .Formula = frmula
+    If repCol <> "" Then
+        .Copy
+        If asValues Then
+            sht.Range(repCol & hdrRow + 1 & ":" & repCol & shtLR).PasteSpecial xlPasteValues
+        Else
+            sht.Range(repCol & hdrRow + 1 & ":" & repCol & shtLR).PasteSpecial xlPasteAll
+        End If
+        If fmt <> "" Then
+            sht.Range(repCol & hdrRow + 1 & ":" & repCol & shtLR).NumberFormat = fmt
+        End If
+        Application.CutCopyMode = False
+        sht.Range(addCol & ":" & addCol).Delete xlShiftToLeft
+    Else
+        If asValues Then
+            .Value = .Value
+        End If
+        If fmt <> "" Then
+            .NumberFormat = fmt
+        End If
+    End If
+End With
+End Sub
+
+

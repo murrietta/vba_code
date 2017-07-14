@@ -1,4 +1,9 @@
-Sub expandDetails(pvt As PivotTable, aggCol, max_rows, Optional flag_col = "")
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+'Typical routines associated with DW usage
+'last updated 2017-07-13
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+Sub getDataFromFilteredDWpivot(pvt As PivotTable, aggCol, max_rows, Optional flag_col = "")
 'assumes that there is a pivot table on the activesheet that has some fields visible
 Dim sht As Worksheet, cl As Range
 Application.ScreenUpdating = False
@@ -43,8 +48,6 @@ Next cl
 'return to the control panel sheet
 sht.Activate
 End Sub
-'==================================================================================================
-
 Sub aggDetails(sht As Worksheet, smrname, clear_smr)
 Dim smr As Worksheet, det As Worksheet
 'sht should be the sheet with the DW but it really doesn't matter as it is just a reference of where to put the output
@@ -58,7 +61,7 @@ dtHdrRow = 3
 If WorksheetExists(CStr(smrname)) Then
     Set smr = Sheets(smrname)
 Else
-    Set smr = ActiveWorkbook.Sheets.Add(After:=sht)
+    Set smr = ActiveWorkbook.Sheets.Add(after:=sht)
     smr.Name = smrname
 End If
 If clear_smr = True Then
@@ -109,20 +112,32 @@ If dtCols(0) <> "" Then
     smr.Range(addCols(1) & "1").Value = "entered datetime"
 End If
 End Sub
-'==================================================================================================
 
-Sub setDetailMaxRows(maxRows, conFile as string)
+Sub deleteDetails()
+Dim sht As Worksheet
+Application.ScreenUpdating = False
+Application.DisplayAlerts = False
+For Each sht In ActiveWorkbook.Sheets
+    If sht.Name Like "Detail*" Then
+        sht.Delete
+    End If
+Next sht
+Set sht = Nothing
+End Sub
+Sub setDetailMaxRows(maxRows, conFile As String)
 'fairly specific, will only work for the general quality model named "Model" (won't work for the EBM model or perspectives of the quality model)
-'also assumes that the current user stores this models data connection in Documents\My Data Sources\ and that it is .odc
+'also assumes that the current user stores this models data connection in Documents\My Data Sources\ and also that they named it
+
+conFile = "CHCC-DW-BI-2 Quality Outcomes Model.odc"
 
 tmp2 = Split(Application.UserLibraryPath, "\", 4)
 basePath = tmp2(0) & "\" & tmp2(1) & "\" & tmp2(2) & "\"
-    With ActiveWorkbook.Connections(replace(conFile,".odc","")).OLEDBConnection
+    With ActiveWorkbook.Connections(Replace(conFile, ".odc", "")).OLEDBConnection
         .CommandText = Array("Model")
         .CommandType = xlCmdCube
         .Connection = Array( _
         "OLEDB;Provider=MSOLAP.4;Integrated Security=SSPI;Persist Security Info=True;Initial Catalog=Quality Outcomes;Data Source=" & _
-				split(conFile," ",2)(0) & ";", "MDX Compatibility=1;Safety Options=2;MDX Missing Member Mode=Error")
+                Split(conFile, " ", 2)(0) & ";", "MDX Compatibility=1;Safety Options=2;MDX Missing Member Mode=Error")
         .RefreshOnFileOpen = False
         .SavePassword = False
         .SourceConnectionFile = basePath & "My Data Sources\" & conFile
@@ -135,13 +150,11 @@ basePath = tmp2(0) & "\" & tmp2(1) & "\" & tmp2(2) & "\"
         .ServerNumberFormat = True
         .ServerTextColor = True
     End With
-    With ActiveWorkbook.Connections(replace(conFile,".odc",""))
-        .Name = replace(conFile,".odc","")
+    With ActiveWorkbook.Connections(Replace(conFile, ".odc", ""))
+        .Name = Replace(conFile, ".odc", "")
         .Description = ""
     End With
 End Sub
-'==================================================================================================
-
 Sub filterTableBy(fltshtnm, shtCol, tbl, fld, pvt As PivotTable, Optional stRow = 2, Optional clearTable = False, Optional inclCol = False)
 'generic macro to filter a table by a column by a list of values that exist in that column.
 
@@ -186,22 +199,29 @@ With pvt.CubeFields("[" & tbl & "].[" & fld & "]")
 End With
 
 End Sub
-'==================================================================================================
-
-Sub testAccountsInTable(pvt As PivotTable, acctsNm, acctCol, tbl, fld, Optional flt = False)
+Sub testAccountsInTable(accts As Worksheet, acctCol, tbl, col, Optional flt = False, Optional verbose = True)
+Dim pvt As PivotTable
+'set sht and pvt to active sheet and the first pivot table on it, should just be DW pivot
+Set sht = Sheets("dw")
+Set pvt = sht.PivotTables.Item(1)
 'set the sheet variable and msgbox title, verify it is okay to proceed.
 ttl2 = "Account Table Tester"
-Set accts = Sheets(acctsNm)
-If MsgBox("This macro will write to the first column from the left that does not have a header on sheet '" & accts.Name & _
-    "' or will write to the 'In table?' column." & vbLf & vbLf & "Okay to proceed?", vbYesNo, ttl2) = vbYes Then
+'clear
+pvt.clearTable
+'Set accts = Sheets(sht.Cells.Find(what:="test value sheet", lookat:=xlWhole, searchorder:=xlByRows).Offset(0, 1).Value)
+If verbose Then
+    If MsgBox("This macro will write to the first column from the left that does not have a header on sheet '" & accts.Name & _
+        "' or will write to the 'In table?' column." & vbLf & vbLf & "Okay to proceed?", vbYesNo, ttl2) = vbNo Then
+        MsgBox "Canceled!", vbInformation, ttl2
+        Exit Sub
+    End If
+Else
+    'acctCol = sht.Cells.Find(what:="test value column", lookat:=xlWhole, searchorder:=xlByRows).Offset(0, 1).Value
+    'tbl = sht.Cells.Find(what:="test table", lookat:=xlWhole, searchorder:=xlByRows).Offset(0, 1).Value
     acctsLR = Split(accts.UsedRange.Address, "$", 5)(4)
-    Set cl = accts.Cells.Find(what:="In " & tbl & "?", lookat:=xlWhole, SearchOrder:=xlByRows)
+    Set cl = accts.Cells.Find(what:="In " & tbl & "?", lookat:=xlWhole, searchorder:=xlByRows)
     If cl Is Nothing Then
-        If Split(accts.[a1].End(xlToRight).Address, "$", 3)(1) = "XFD" Then
-            writeCol = "b"
-        Else
-            writeCol = Split(accts.[a1].End(xlToRight).Offset(0, 1).Address, "$", 3)(1)
-        End If
+        writeCol = Split(accts.[a1].End(xlToRight).Offset(0, 1).Address, "$", 3)(1)
         accts.Range(writeCol & "1").Value = "In " & tbl & "?"
     Else
         writeCol = Split(cl.Address, "$", 3)(1)
@@ -209,31 +229,37 @@ If MsgBox("This macro will write to the first column from the left that does not
     End If
     
     'loop through each and try it, if it fails then write a note in outer most column
-    pvt.CubeFields("[" & tbl & "].[" & fld & "]").CreatePivotFields
+    pvt.CubeFields("[" & tbl & "].[" & col & "]").CreatePivotFields
     On Error Resume Next
     For Each cl In accts.Range(acctCol & "2:" & acctCol & acctsLR).SpecialCells(xlCellTypeVisible)
-        pvt.PivotFields("[" & tbl & "].[" & fld & "].[" & fld & "]").VisibleItemsList = Array("[" & tbl & "].[" & fld & "].&[" & cl.Value & "]")
+        pvt.PivotFields("[" & tbl & "].[" & col & "].[" & col & "]").VisibleItemsList = Array("[" & tbl & "].[" & col & "].&[" & cl.Value & "]")
         If Err.Description <> "" Then
             accts.Range(writeCol & cl.Row).Value = False
-            Debug.Print Err.Description
+            If verbose Then
+                Debug.Print Err.Description
+            End If
             Err.Clear
         Else
             accts.Range(writeCol & cl.Row).Value = True
         End If
     Next cl
     On Error GoTo 0
+    'accts.Range(writeCol & "1").Value = "In table?"
+    
+    'filter the range if it is specified by the user
+    'flt = sht.Cells.Find(what:="Filter Out False?", lookat:=xlWhole, searchorder:=xlByRows).Offset(0, 1).Value
     If flt Then
         accts.UsedRange.AutoFilter  'clear any previous filters
         accts.Range("A1:" & writeCol & acctsLR).AutoFilter field:=accts.Range(writeCol & "1").Column, Criteria1:=True
     End If
-    
-    MsgBox "Test complete!", vbInformation, ttl2
-Else
-    MsgBox "Canceled!", vbInformation, ttl2
 End If
 End Sub
-'==================================================================================================
 
+Private Function WorksheetExists(WSName As String) As Boolean
+On Error Resume Next
+WorksheetExists = Worksheets(WSName).Name = WSName
+On Error GoTo 0
+End Function
 Private Sub undotable(smr As Worksheet)
 If smr.ListObjects.Count > 0 Then
     smr.ListObjects(1).Unlist
@@ -242,21 +268,18 @@ If smr.ListObjects.Count > 0 Then
     smr.Cells.Borders().LineStyle = xlNone
 End If
 End Sub
-'==================================================================================================
-
 Sub removeSubtotals(pvt As PivotTable)
 pvt.RowAxisLayout xlTabularRow
 pvt.RepeatAllLabels xlRepeatLabels
 pvt.ColumnGrand = False
 pvt.RowGrand = False
 For Each pf In pvt.PivotFields
-    If pf.Caption <> "Values" Then
+    If pf.caption <> "Values" Then
         pf.Subtotals = Array(False, False, _
             False, False, False, False, False, False, False, False, False, False)
     End If
 Next pf
 End Sub
-'==================================================================================================
 
 Function ISOdateRange(dts, tbl, fld)
     'function input for testing
@@ -277,8 +300,6 @@ Function ISOdateRange(dts, tbl, fld)
     Loop
     ISOdateRange = Split(arr, vbLf, 1 + Len(arr) - Len(Replace(arr, vbLf, "")))
 End Function
-'==================================================================================================
-
 Sub addFieldToDW(pvt As PivotTable, tbl, fld, Optional fldOrient = xlRowField, Optional position = "", Optional preFilter = "")
 If UBound(Filter(Array(xlColumnField, xlDataField, xlHidden, xlPageField, xlRowField), fldOrient)) = -1 Then
     Debug.Print Err
@@ -297,14 +318,19 @@ Else
     End If
 End If
 End Sub
-'==================================================================================================
-
-Sub addFieldToPvt(pvt As PivotTable, fld, Optional fldOrient = xlRowField, Optional position = "")
-'not really for DW but I often work with both at the same time...
+Sub addFieldToPvt(pvt As PivotTable, fld, Optional fldOrient = xlRowField, Optional position = "", Optional caption = "", Optional data_function = xlCount)
 If UBound(Filter(Array(xlColumnField, xlDataField, xlHidden, xlPageField, xlRowField), fldOrient)) = -1 Then
     Debug.Print Err
 Else
-    pvt.PivotFields(fld).Orientation = fldOrient
+    If fldOrient = xlDataField Then
+        If UBound(Filter(Array(xlAverage, xlCount, xlCountNums, xlMax, xlMin, xlProduct, xlStDev, xlStDevP, xlSum, xlUnknown, xlVar, xlVarP), data_function)) = -1 Then
+            Debug.Print Err
+            Exit Sub
+        End If
+        pvt.AddDataField pvt.PivotFields(fld), caption, data_function
+    Else
+        pvt.PivotFields(fld).Orientation = fldOrient
+    End If
     If position <> "" Then
         pvt.PivotFields(fld).position = position
     End If
