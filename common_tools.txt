@@ -1,4 +1,4 @@
-Sub meltData(sht As Worksheet, varCols, Optional hdrRow = 1)
+Function meltData(sht As Worksheet, varCols, Optional hdrRow = 1, Optional asValues = False) As Worksheet
 Dim out As Worksheet, outcl As Range, cl As Range
 
 '
@@ -38,7 +38,13 @@ For i = LBound(varCols) To UBound(varCols)
     Set cl = sht.Rows(hdrRow & ":" & hdrRow).Find(what:=varCols(i), lookat:=xlWhole)
     clCol = Split(cl.Address, "$", 3)(1)
     outcl2Col = Split(outcl2.Address, "$", 3)(1)
-    sht.Range(clCol & hdrRow + 1 & ":" & clCol & shtLR).Copy out.Range(outcl2Col & meltLR + 1)
+    If asValues = False Then
+        sht.Range(clCol & hdrRow + 1 & ":" & clCol & shtLR).Copy out.Range(outcl2Col & meltLR + 1)
+    Else
+        sht.Range(clCol & hdrRow + 1 & ":" & clCol & shtLR).Copy
+        out.Range(outcl2Col & meltLR + 1).PasteSpecial xlPasteValuesAndNumberFormats
+        Application.CutCopyMode = False
+    End If
     'assign last rows
     meltLR0 = meltLR
     meltLR = meltLR + shtLR - 1 'do it like this just in case we copy over a column that has missing values
@@ -49,10 +55,57 @@ For i = LBound(varCols) To UBound(varCols)
     comCol = Split(outcl.Offset(0, -1).Address, "$", 3)(1) 'the last column of the common data (first is A)
     out.Range("A2:" & comCol & shtLR).Copy out.Range("A" & meltLR0 + 1)
 Next i
+Set meltData = out
+End Function
+
+Sub meltData2(sht As Worksheet, keyCols, varCols, Optional hdrRow = 1, Optional delExtraCols = True, Optional repLabels = "")
+'expects the column arrays to just be labels that can be found in the header row
+'assumes that keyCols are next to eachother
+'assumes repLabels and varCols have coordinated indexes
+
+Application.ScreenUpdating = False
+
+'get the actual column letters for all columns
+For i = LBound(keyCols) To UBound(keyCols)
+    keyCols(i) = Split(sht.Range(hdrRow & ":" & hdrRow).Find(what:=keyCols(i), lookat:=xlWhole).Address, "$", 3)(1)
+Next i
+For i = LBound(varCols) To UBound(varCols)
+    varCols(i) = Split(sht.Range(hdrRow & ":" & hdrRow).Find(what:=varCols(i), lookat:=xlWhole).Address, "$", 3)(1)
+Next i
+
+'now melt em
+initLR = Split(sht.UsedRange.Address, "$", 5)(4)
+shtLR = initLR
+valCol = Split(sht.Cells(1, UBound(keyCols) + 2).Address, "$", 3)(1) 'this is the column where the melted values will go
+For i = LBound(varCols) To UBound(varCols)
+    'copy the key cols
+    sht.Range(keyCols(0) & hdrRow + 1 & ":" & keyCols(UBound(keyCols)) & initLR).Copy
+    sht.Cells(shtLR + 1, 1).PasteSpecial xlPasteValuesAndNumberFormats
+    'copy the label column
+    If IsArray(repLabels) Then
+        sht.Range(Cells(shtLR + 1, UBound(keyCols) + 2), Cells(sht.[a1].End(xlDown).Row, UBound(keyCols) + 2)).FormulaArray = repLabels(i)
+    Else
+        sht.Range(Cells(shtLR + 1, UBound(keyCols) + 2), Cells(sht.[a1].End(xlDown).Row, UBound(keyCols) + 2)).FormulaArray = sht.Range(varCols(i) & hdrRow).Value
+    End If
+    'copy the var col
+    sht.Range(varCols(i) & hdrRow + 1 & ":" & varCols(i) & initLR).Copy
+    sht.Cells(shtLR + 1, UBound(keyCols) + 3).PasteSpecial xlPasteValuesAndNumberFormats
+    shtLR = Split(sht.UsedRange.Address, "$", 5)(4)
+Next i
+sht.Range(hdrRow + 1 & ":" & initLR).Delete xlShiftUp
+sht.Cells(hdrRow, UBound(keyCols) + 2).Value = "var"
+sht.Cells(hdrRow, UBound(keyCols) + 3).Value = "value"
+
+If delExtraCols Then
+    sht.Range(Cells(hdrRow, UBound(keyCols) + 4), Cells(shtLR, UBound(keyCols) + 4).End(xlToRight)).Delete xlShiftToLeft
+End If
 End Sub
-Function WorksheetExists(WSName As String) As Boolean
+Function WorksheetExists(WSName As String, Optional bk As Workbook) As Boolean
+If bk Is Nothing Then
+    Set bk = ThisWorkbook
+End If
 On Error Resume Next
-WorksheetExists = Worksheets(WSName).Name = WSName
+WorksheetExists = bk.Worksheets(WSName).Name = WSName
 On Error GoTo 0
 End Function
 Function IsWorkBookOpen(FileName As String)
@@ -213,53 +266,151 @@ Else
     HasComment = True
 End If
 End Function
+Function rangeToArr2(sht As Worksheet, col_label, Optional labelRow = 1, Optional hasHeader = True, _
+    Optional visible = True, Optional asVal = False, Optional unique = False, Optional crit = "", Optional crit_offset = 0)
+Dim rng As Range
+shtLR = Split(sht.UsedRange.Address, "$", 5)(4)
+col = Split(sht.Range(labelRow & ":" & labelRow).Find(what:=col_label, lookat:=xlWhole).Address, "$", 3)(1)
+Set rng = sht.Range(col & labelRow & ":" & col & shtLR)
+rangeToArr2 = rangeToArr(rng, unique, crit, crit_offset, , hasHeader, visible, asVal)
+End Function
 
-
-Function rangeToArr(rng As Range, Optional unique = False, Optional crit = "", Optional crit_offset = 0)
+Function rangeToArr(rng As Range, Optional unique = False, Optional crit = "", Optional crit_offset = 0, _
+    Optional includeBlank = False, Optional hasHeader = True, Optional visible = True, Optional asVal = False)
 'if using the crit option then you should specify crit_offset <> 0
 'crit and crit_offset look for criteria in a neighboring cell
 'once crit is used it assumes we are in a range structure where the criteria will always be on the same row
 'some certain number of columns away
 arr = ""
+If hasHeader Then
+    comps = Split(rng.Address, "$", 5)
+    Set rng = rng.Parent.Range(comps(1) & Replace(comps(2), ":", "") + 1 & ":" & comps(3) & comps(4))
+End If
+    
+If visible Then
+    Set rng = rng.SpecialCells(xlCellTypeVisible)
+End If
 For Each cl In rng
     If unique Then
-        If Not ("*" & cl.Value & "*" Like arr) Then
-            If crit = "" Then
-                arr = arr & vbLf & cl.Value
-            Else
-                If cl.Offset(0, crit_offset).Value = crit Then
+        If Not (arr Like "*" & cl.Value & "*") Then
+            If includeBlank Then
+                If crit = "" Then
                     arr = arr & vbLf & cl.Value
+                Else
+                    If crit Like "*<>*" Then
+                        If cl.Offset(0, crit_offset).Value <> Replace(crit, "<>", "") Then
+                            arr = arr & vbLf & cl.Value
+                        End If
+                    Else
+                        If cl.Offset(0, crit_offset).Value = crit Then
+                            arr = arr & vbLf & cl.Value
+                        End If
+                    End If
+
+                End If
+            Else
+                If cl.Value <> "" Then
+                    If crit = "" Then
+                        arr = arr & vbLf & cl.Value
+                    Else
+                        If crit Like "*<>*" Then
+                            If cl.Offset(0, crit_offset).Value <> Replace(crit, "<>", "") Then
+                                arr = arr & vbLf & cl.Value
+                            End If
+                        Else
+                            If cl.Offset(0, crit_offset).Value = crit Then
+                                arr = arr & vbLf & cl.Value
+                            End If
+                        End If
+                    End If
                 End If
             End If
         End If
     Else
-        If crit = "" Then
-            arr = arr & vbLf & cl.Value
-        Else
-            If cl.Offset(0, crit_offset).Value = crit Then
+        If includeBlank Then
+            If crit = "" Then
                 arr = arr & vbLf & cl.Value
+            Else
+                If crit Like "*<>*" Then
+                    If cl.Offset(0, crit_offset).Value <> Replace(crit, "<>", "") Then
+                        arr = arr & vbLf & cl.Value
+                    End If
+                Else
+                    If cl.Offset(0, crit_offset).Value = crit Then
+                        arr = arr & vbLf & cl.Value
+                    End If
+                End If
+            End If
+        Else
+            If cl.Value <> "" Then
+                If crit = "" Then
+                    arr = arr & vbLf & cl.Value
+                Else
+                    If crit Like "*<>*" Then
+                        If cl.Offset(0, crit_offset).Value <> Replace(crit, "<>", "") Then
+                            arr = arr & vbLf & cl.Value
+                        End If
+                    Else
+                        If cl.Offset(0, crit_offset).Value = crit Then
+                            arr = arr & vbLf & cl.Value
+                        End If
+                    End If
+                End If
             End If
         End If
     End If
 Next cl
 arr = Right(arr, Len(arr) - 1)
-rangeToArr = Split(arr, vbLf, 1 + Len(arr) - Len(Replace(arr, vbLf, "")))
+arr = Split(arr, vbLf, 1 + Len(arr) - Len(Replace(arr, vbLf, "")))
+If asVal Then
+    If IsArray(arr) Then
+        ReDim arr2(LBound(arr) To UBound(arr))
+        For i = LBound(arr) To UBound(arr)
+            arr2(i) = Val(arr(i))
+        Next i
+        rangeToArr = arr2
+    Else
+        rangeToArr = ""
+    End If
+Else
+    If IsArray(arr) Then
+        rangeToArr = arr
+    Else
+        rangeToArr = ""
+    End If
+End If
 End Function
-Function addSheet(shtnm, Optional bk As Workbook = Nothing, Optional clear_cells = True) As Worksheet
+Function addSheet(shtnm, Optional bk As Workbook = Nothing, Optional clear_cells = True, Optional copy_from_sheet = "") As Worksheet
 'depends on WorksheetExists
+'note on copy_from_sheet: this will delete the current sheet if it exists
 If bk Is Nothing Then
-    Set bk = ActiveWorkbook
+    Set bk = ThisWorkbook
 Else
     bk.Activate
 End If
-If WorksheetExists(CStr(shtnm)) Then
-    Set sht = Sheets(shtnm)
-    If clear_cells Then
-        sht.Cells.Clear
+If WorksheetExists(CStr(shtnm), bk) Then
+    If copy_from_sheet <> "" Then
+        Application.DisplayAlerts = False
+        bk.Sheets(shtnm).Delete
+        Application.DisplayAlerts = True
+        bk.Sheets(copy_from_sheet).Copy after:=bk.Sheets(copy_from_sheet)
+        Set sht = ActiveSheet
+        sht.Name = shtnm
+    Else
+        Set sht = Sheets(shtnm)
+        If clear_cells Then
+            sht.Cells.Clear
+        End If
     End If
 Else
-    Set sht = Sheets.Add
-    sht.Name = shtnm
+    If copy_from_sheet <> "" Then
+        bk.Sheets(copy_from_sheet).Copy after:=bk.Sheets(copy_from_sheet)
+        Set sht = ActiveSheet
+        sht.Name = shtnm
+    Else
+        Set sht = Sheets.Add
+        sht.Name = shtnm
+    End If
 End If
 Set addSheet = sht
 End Function
@@ -292,25 +443,57 @@ Function FillInRangeWithAbove(sht As Worksheet, col1, col2, hdr)
 '    FillInRangeWithAbove = Array(shtLR, shtLC)
 End Function
 
-Sub fillInFormula(sht As Worksheet, frmula, Optional ttl, Optional hdrRow = 1, _
+Function fillInFormula(sht As Worksheet, frmula, Optional ttl, Optional hdrRow = 1, _
                     Optional stCol = "a", Optional asValues = True, Optional repCol = "", _
-                    Optional addCol = "", Optional shtLR = "", Optional fmt = "")
+                    Optional addCol = "", Optional shtLR = "", Optional fmt = "", Optional asLtr = True, _
+                    Optional lr_method = "usedrange", Optional repMethod = "overwrite")
+''temp vars
+'Dim sht As Worksheet
+'Set sht = Sheets("Sheet2")
+'frmula = "=r[0]c1 + r[0]c2"
+'ttl = "a plus b"
+'hdrRow = 1
+'stCol = "a"
+'asValues = True
+'repCol = ""
+'addCol = ""
+'shtLR = ""
 
+'
+'this function returns either a letter or a number indicating the column that was filled in with a formula
+'
+'description of the parameters:
+'
 'hdrRow is the row the header is in
 'stCol is the column the dataset begins on
 'if asValues is True then copy the output of the formula and paste as values else we leave as formula
 'if repCol is blank then just leave output in addCol
 'if addCol is blank then addCol will be the next column to the right of the data that is empty based on range(hdrRow & ":" & hdrRow).end(xltoright).offset(0,1)
 'if shtLR is blank then we just calculate it based on the usedrange in sht
+'asLtr specifies how to return the addCol variable, if true then returns column letter, otherwise it returns column number
+'lr_method specifies how to find the last row. only two options right now: "usedrange", and "stCol"... choose wisely
+'   "usedrange" just uses the last row that is specified in sht.usedrange.address
+'   "stCol" just uses the last row returned by using sht.range(stCol & hdrRow).end(xlDown).row
 
 'calculate addCol
 If addCol = "" Then
-    addCol = Split(sht.Range(stCol & hdrRow).End(xlToRight).Offset(0, 1).Address, "$", 3)(1)
+    If sht.Range(stCol & hdrRow).End(xlToRight).Column = 16384 Then
+        addCol = "b"
+    Else
+        addCol = Split(sht.Range(stCol & hdrRow).End(xlToRight).Offset(0, 1).Address, "$", 3)(1)
+    End If
 End If
 
 'calculate shtLR
 If shtLR = "" Then
-    shtLR = Split(sht.UsedRange.Address, "$", 5)(4)
+    If lr_method = "usedrange" Then
+        shtLR = Split(sht.UsedRange.Address, "$", 5)(4)
+    ElseIf lr_method = "stCol" Then
+        shtLR = sht.Range(stCol & hdrRow).End(xlDown).Row
+        If shtLR = 1048576 Then
+            MsgBox "Can't find last row. Please specify the 'shtLR' parameter in the 'fillInFormula' function."
+        End If
+    End If
 End If
 
 'apply formula
@@ -318,6 +501,10 @@ sht.Range(addCol & hdrRow).Value = ttl
 With sht.Range(addCol & hdrRow + 1 & ":" & addCol & shtLR)
     .Formula = frmula
     If repCol <> "" Then
+        If repMethod = "insert" Then    'repMethod is either "insert" or "overwrite"
+            sht.Range(repCol & ":" & repCol).Insert xlShiftToRight
+            addCol = Split(sht.Range(addCol & "1").Offset(0, 1).Address, "$", 3)(1)
+        End If
         .Copy
         If asValues Then
             sht.Range(repCol & hdrRow + 1 & ":" & repCol & shtLR).PasteSpecial xlPasteValues
@@ -327,17 +514,298 @@ With sht.Range(addCol & hdrRow + 1 & ":" & addCol & shtLR)
         If fmt <> "" Then
             sht.Range(repCol & hdrRow + 1 & ":" & repCol & shtLR).NumberFormat = fmt
         End If
+        sht.Range(repCol & hdrRow).Value = ttl
         Application.CutCopyMode = False
         sht.Range(addCol & ":" & addCol).Delete xlShiftToLeft
-    Else
-        If asValues Then
-            .Value = .Value
+        'return the column that was just filled in
+        If asLtr Then
+            fillInFormula = repCol
+        Else
+            fillInFormula = sht.Range(repCol & "1").Column
         End If
+    Else
         If fmt <> "" Then
             .NumberFormat = fmt
         End If
+        If asValues Then
+            .Value = .Value
+        End If
+        'return the column that was filled in
+        If asLtr Then
+            fillInFormula = addCol
+        Else
+            fillInFormula = sht.Range(addCol & "1").Column
+        End If
     End If
 End With
+End Function
+Function openWorkbook(wpath, Optional create = False) As Workbook
+'check if it even exists
+If Dir(wpath) = "" Then
+    'it doesn't exist, create, open, and return it
+    If create Then
+        Set openWorkbook = Workbooks.Add()
+        openWorkbook.SaveAs wpath
+    Else
+        Set openWorkbook = Nothing
+    End If
+Else
+    'it does exist so either open it or just return it
+    If IsWorkBookOpen(CStr(wpath)) Then
+        Set openWorkbook = Workbooks(StrReverse(Split(StrReverse(wpath), "\", 2)(0)))
+    Else
+        Set openWorkbook = Workbooks.Open(wpath)
+    End If
+End If
+End Function
+
+
+Function GetChartRange(cht As Chart, series As Integer, _
+    ValOrX As String) As Range
+     'cht: A Chart object
+     'series: Integer representing the Series
+     'ValOrX: String, either "values" or "xvalues"
+    Dim Sf As String
+    Dim CommaCnt As Integer
+    Dim Commas() As Integer
+    Dim ListSep As String * 1
+    Dim Temp As String
+    Dim i As Integer
+    Set GetChartRange = Nothing
+    On Error Resume Next
+     'Get the SERIES formula
+    Sf = cht.SeriesCollection(series).Formula
+     'Check for noncontiguous ranges by counting commas
+     'Also, store the character position of the commas
+    CommaCnt = 0
+    ListSep = Application.International(xlListSeparator)
+    For i = 1 To Len(Sf)
+        If Mid(Sf, i, 1) = ListSep Then
+            CommaCnt = CommaCnt + 1
+            ReDim Preserve Commas(CommaCnt)
+            Commas(CommaCnt) = i
+        End If
+    Next i
+    If CommaCnt > 3 Then Exit Function
+     'XValues or Values?
+    Select Case UCase(ValOrX)
+    Case "XVALUES"
+         'Text between 1st and 2nd commas in SERIES Formula
+        Temp = Mid(Sf, Commas(1) + 1, Commas(2) - _
+        Commas(1) - 1)
+        Set GetChartRange = Range(Temp)
+    Case "VALUES"
+         'Text between the 2nd and 3rd commas in SERIES Formula
+        Temp = Mid(Sf, Commas(2) + 1, Commas(3) - _
+        Commas(2) - 1)
+        Set GetChartRange = Range(Temp)
+    End Select
+End Function
+
+
+Function datesBetween(dts, Optional fmt = "", Optional append = "", Optional spacing = "days")
+'added optional fmt and optional append, an example usage is
+'dts = comtools.datesBetween(array("4/1/2017","4/31/2017"),fmt:="yyyy-mm-dd",append:="T00:00:00")
+'values will look like 2017-04-01T00:00:00, ..., 2017-04-31T00:00:00, useful for filtering date attributes in the DW
+
+'test
+'dts = Array("4/1/2017", "4/10/2017")
+If spacing = "days" Then
+    sp = "d"
+ElseIf spacing = "months" Then
+    sp = "m"
+ElseIf spacing = "years" Then
+    sp = "y"
+End If
+    
+N = DateDiff(sp, dts(0), dts(1))
+ReDim dt(0 To N)
+For i = 0 To N
+    If fmt <> "" Then
+        dt(i) = Format(DateAdd(sp, i, dts(0)), fmt)
+    Else
+        dt(i) = DateAdd(sp, i, dts(0))
+    End If
+    If append <> "" Then
+        dt(i) = dt(i) & append
+    End If
+Next i
+datesBetween = dt
+End Function
+Sub removeRows(sht As Worksheet, col, crit1, Optional op = "", Optional crit2 = "", Optional hRow = 2, Optional shtLC = "", Optional stCol = 1, Optional clear_prev = False)
+If clear_prev Then
+    sht.UsedRange.AutoFilter
+End If
+shtLR = Split(sht.UsedRange.Address, "$", 5)(4)
+If shtLC = "" Then
+    shtLC = sht.Cells.Find(what:="*", lookat:=xlPart, searchorder:=xlByColumns, searchdirection:=xlPrevious, after:=sht.[a1]).Column
+End If
+If op = "" And crit2 = "" Then
+    If IsArray(crit1) Then
+        sht.UsedRange.AutoFilter col, crit1, xlFilterValues
+    Else
+        sht.UsedRange.AutoFilter col, crit1
+    End If
+Else
+    'note that op and crit2 must be specified, not just one of them
+    On Error Resume Next
+    '2018-02-12: currently not sure how to handly array values both columns
+    '               and not looking to spend that time right now
+    sht.UsedRange.AutoFilter col, crit1, op, crit2
+    On Error GoTo 0
+End If
+Set cl1 = sht.Cells(hRow, stCol)
+Set cl2 = sht.Cells(shtLR, shtLC)
+On Error Resume Next
+sht.Range(cl1.Address & ":" & cl2.Address).SpecialCells(xlCellTypeVisible).Delete xlShiftUp
+On Error GoTo 0
+'it doesn't always like this line so we added the above 3 lines
+'sht.Range(Cells(hRow, stCol), Cells(shtLR, shtLC)).SpecialCells(xlCellTypeVisible).Delete xlShiftUp
+sht.UsedRange.AutoFilter
+End Sub
+Sub appendToSheet(sht As Worksheet, valArr, Optional shtLR = "", Optional stCol = "a")
+'assumes that valArr is an array
+On Error Resume Next
+If shtLR = "" Then
+    shtLR = Split(sht.UsedRange.Address, "$", 5)(4)
+    If IsEmpty(shtLR) Then 'then there was no usedrange and we are going to write to row 1
+        shtLR = 0
+    End If
+End If
+On Error GoTo 0
+col = sht.Range(stCol & "1").Column
+For i = LBound(valArr) To UBound(valArr)
+    sht.Cells(shtLR + 1, col + i).Value = valArr(i)
+Next i
+End Sub
+
+Function importSheetFromWorkbook(targetpath, Optional destbk As Workbook = Nothing, Optional sheetname = "", Optional sheetindex = 1, _
+    Optional copyType = "whole_sheet", Optional newname = "", Optional clearExisting As Boolean = True) As Worksheet
+    
+'copyType options: whole_sheet, data_only, data_and_formats, all
+
+Dim tbk As Workbook, tsht As Worksheet, tmp As Worksheet
+
+'test values and dim
+'Dim destbk As Workbook
+'targetpath = ThisWorkbook.Path & "\common - gencaserec.xlsx"
+'sheetindex = 1
+
+If destbk Is Nothing Then
+    Set destbk = ThisWorkbook
+End If
+
+Set tbk = comtools.openWorkbook(targetpath)
+
+If sheetname <> "" Then
+    Set tsht = tbk.Sheets(sheetname)
+Else
+    Set tsht = tbk.Sheets(sheetindex)
+End If
+
+If copyType = "whole_sheet" Then
+    tsht.Copy after:=destbk.Sheets(destbk.Sheets.Count)
+    Set tsht = ActiveSheet
+ElseIf copyType = "data_only" Then
+    Set tmp = comtools.addSheet("sheet9999")
+    tsht.UsedRange.Copy
+    tmp.Range("a1").PasteSpecial xlPasteValues
+    Set tsht = tmp
+ElseIf copyType = "data_and_formats" Then
+    Set tmp = comtools.addSheet("sheet9999")
+    tsht.UsedRange.Copy
+    tmp.Range("a1").PasteSpecial xlPasteValuesAndNumberFormats
+    Set tsht = tmp
+ElseIf copyType = "all" Then
+    Set tmp = comtools.addSheet("sheet9999")
+    tsht.UsedRange.Copy
+    tmp.Range("a1").PasteSpecial xlPasteAll
+    Set tsht = tmp
+Else
+    'you done blew it
+End If
+
+If newname <> "" Then
+    'error will raise if name is already taken in the workbook
+    If clearExisting Then
+        If WorksheetExists(CStr(newname)) Then
+            Application.DisplayAlerts = False
+            destbk.Sheets(newname).Delete
+            Application.DisplayAlerts = True
+        End If
+    End If
+    tsht.Name = newname
+End If
+
+Application.CutCopyMode = False
+tbk.Close False
+Set importSheetFromWorkbook = tsht
+End Function
+Sub multiSort(sht As Worksheet, flds, Optional orders = "", Optional hdrRow = 1)
+'input:
+'   sht is a worksheet
+'   flds is an array containing header names
+'   orders is an array containing the order each column should be sorted in
+'       this is 1-1 mapped with flds array
+'   hdrRow is the row in which to look for headers
+'
+'Note that this procedure is really designed to work with data that contains a single range on the worksheet
+'
+
+'first find last row
+shtLR = Split(sht.UsedRange.Address, "$", 5)(4)
+
+'init orders
+If IsArray(orders) = False Then
+    ReDim orders(LBound(flds) To UBound(flds))
+    'leave them empty, this will assume you just mean to use xlAscending
+End If
+
+'clear sort fields
+sht.Sort.SortFields.Clear
+
+'loop over fields, find the column they are in
+For i = LBound(flds) To UBound(flds)
+    col = Split(sht.Range(hdrRow & ":" & hdrRow).Find(what:=flds(i), lookat:=xlWhole).Address, "$", 3)(1)
+    If IsEmpty(orders(i)) Then
+        orders(i) = xlAscending
+    End If
+    sht.Sort.SortFields.Add Key:=sht.Range(col & "2:" & col & shtLR), SortOn:=xlSortOnValues, Order:=orders(i), DataOption:=xlSortNormal
+Next i
+With sht.Sort
+    .SetRange sht.UsedRange
+    .Header = xlYes
+    .MatchCase = False
+    .Orientation = xlTopToBottom
+    .SortMethod = xlPinYin
+    .Apply
+End With
+End Sub
+
+Function findColumnByName(sht As Worksheet, colLabel, Optional hdrRow = 1, Optional drctn = xlNext, Optional asLtr = True)
+If asLtr Then
+    findColumnByName = Split(sht.Range(hdrRow & ":" & hdrRow).Find(what:=colLabel, lookat:=xlWhole, _
+                                                                    searchdirection:=drctn, _
+                                                                    after:=sht.Range("a" & hdrRow)).Address, "$", 3)(1)
+Else
+    findColumnByName = sht.Range(hdrRow & ":" & hdrRow).Find(what:=colLabel, lookat:=xlWhole, _
+                                                                    searchdirection:=drctn, _
+                                                                    after:=sht.Range("a" & hdrRow)).Column
+End If
+End Function
+
+Sub makeBorders(rng As Range)
+    borderArr = Array(xlEdgeLeft, xlEdgeTop, xlEdgeBottom, xlEdgeRight, xlInsideVertical, xlInsideHorizontal)
+'    Selection.Borders(xlDiagonalDown).LineStyle = xlNone
+'    Selection.Borders(xlDiagonalUp).LineStyle = xlNone
+    For i = LBound(borderArr) To UBound(borderArr)
+        With rng.Borders(borderArr(i))
+            .LineStyle = xlContinuous
+            .ColorIndex = 0
+            .TintAndShade = 0
+            .Weight = xlThin
+        End With
+    Next i
 End Sub
 
 
