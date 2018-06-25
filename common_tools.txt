@@ -384,7 +384,7 @@ Function addSheet(shtnm, Optional bk As Workbook = Nothing, Optional clear_cells
 'depends on WorksheetExists
 'note on copy_from_sheet: this will delete the current sheet if it exists
 If bk Is Nothing Then
-    Set bk = ThisWorkbook
+    Set bk = ActiveWorkbook
 Else
     bk.Activate
 End If
@@ -808,4 +808,43 @@ Sub makeBorders(rng As Range)
     Next i
 End Sub
 
-
+Sub removeCols(sht As Worksheet, colLabels, Optional headerRow = 1)
+'removes columns on sheet that have column labels as specified in the colLabels array
+For i = LBound(colLabels) To UBound(colLabels)
+    col = Split(sht.Range(headerRow & ":" & headerRow).Find(what:=colLabels(i), lookat:=xlWhole).Address, "$", 3)(1)
+    sht.Range(col & ":" & col).Delete xlShiftToLeft
+Next i
+End Sub
+Function dateInfo(dt, Optional yearType = "Fiscal")
+'dts = Array("2018-10-01T00:00:00", "2018-05-02T00:00:00")
+''yearType = "Fiscal"
+'yearType = "Calendar"
+'dt = dts(i)
+If yearType = "Fiscal" Then
+    If Month(Replace(dt, "T00:00:00", "")) >= 10 Then
+        yr = Year(Replace(dt, "T00:00:00", "")) + 1
+        qtr = "Q1"
+    Else
+        yr = Year(Replace(dt, "T00:00:00", ""))
+        If Month(Replace(dt, "T00:00:00", "")) <= 3 Then
+            qtr = "Q2"
+        ElseIf Month(Replace(dt, "T00:00:00", "")) <= 6 Then
+            qtr = "Q3"
+        Else
+            qtr = "Q4"
+        End If
+    End If
+Else
+    yr = Year(Replace(dt, "T00:00:00", ""))
+    If Month(Replace(dt, "T00:00:00", "")) <= 3 Then
+        qtr = "Q1"
+    ElseIf Month(Replace(dt, "T00:00:00", "")) <= 6 Then
+        qtr = "Q2"
+    ElseIf Month(Replace(dt, "T00:00:00", "")) <= 9 Then
+        qtr = "Q3"
+    Else
+        qtr = "Q4"
+    End If
+End If
+dateInfo = Array(yr, qtr, Format(Replace(dt, "T00:00:00", ""), "[$-409]mmmm;@"))
+End Function

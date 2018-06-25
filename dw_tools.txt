@@ -357,7 +357,14 @@ Function ISOdateRange(dts, tbl, fld)
     Loop
     ISOdateRange = Split(arr, vbLf, 1 + Len(arr) - Len(Replace(arr, vbLf, "")))
 End Function
-Sub addFieldToDW(pvt As PivotTable, tbl, fld, Optional fldOrient = xlRowField, Optional position = "", Optional ByVal preFilter = "")
+Sub expandDateFields(pvt As PivotTable, tbl, fld)
+If fld = "Fiscal" Or fld = "Calendar" Then
+    pvt.PivotFields("[" & tbl & "].[" & fld & "].[Year]").DrilledDown = True
+    pvt.PivotFields("[" & tbl & "].[" & fld & "].[Quarter]").DrilledDown = True
+    pvt.PivotFields("[" & tbl & "].[" & fld & "].[Month]").DrilledDown = True
+End If
+End Sub
+Sub addFieldToDW(pvt As PivotTable, tbl, fld, Optional fldOrient = xlRowField, Optional position = "", Optional preFilter = "")
 If UBound(Filter(Array(xlColumnField, xlDataField, xlHidden, xlPageField, xlRowField), fldOrient)) = -1 Then
     Debug.Print Err
 Else
@@ -365,12 +372,23 @@ Else
         pvt.AddDataField pvt.CubeFields("[Measures].[" & fld & "]")
     Else
         pvt.CubeFields("[" & tbl & "].[" & fld & "]").CreatePivotFields
-        If IsArray(preFilter) Then
-            'it has to be passed in as an array
+        'need an extra check for date type fields
+        If fld = "Calendar" Or fld = "Fiscal" Then
+            'right now just use individual days. need to discern what the appropriate year, quarter, and month are for each date
             For i = LBound(preFilter) To UBound(preFilter)
-                preFilter(i) = "[" & tbl & "].[" & fld & "].&[" & preFilter(i) & "]"
+                dtInfo = comtools.dateInfo(preFilter(i), yearType:=fld)
+                preFilter(i) = "[" & tbl & "].[" & fld & "].[Year].&[" & dtInfo(0) & "].&[" & dtInfo(1) & "].&[" & dtInfo(2) & "].&[" & preFilter(i) & "]"
             Next i
-            pvt.PivotFields("[" & tbl & "].[" & fld & "].[" & fld & "]").VisibleItemsList = preFilter
+            pvt.PivotFields("[" & tbl & "].[" & fld & "].[Date]").VisibleItemsList = preFilter
+        Else
+            'then its just a regular field, do the normal prefilter
+            If IsArray(preFilter) Then
+                'it has to be passed in as an array
+                For i = LBound(preFilter) To UBound(preFilter)
+                    preFilter(i) = "[" & tbl & "].[" & fld & "].&[" & preFilter(i) & "]"
+                Next i
+                pvt.PivotFields("[" & tbl & "].[" & fld & "].[" & fld & "]").VisibleItemsList = preFilter
+            End If
         End If
         pvt.CubeFields("[" & tbl & "].[" & fld & "]").Orientation = fldOrient
         If position <> "" Then
