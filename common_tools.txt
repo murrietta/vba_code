@@ -960,13 +960,20 @@ file_list_hdr = "available files"
 
 'first verify we are in a cell beneath the header
 hdrRow = sht.Cells.Find(what:=file_list_hdr, lookat:=xlWhole).Row
+hdrCol = sht.Cells.Find(what:=file_list_hdr, lookat:=xlWhole).Column
 
-If Target.Row > hdrRow Then
-    'now verify that the selected cell isn't blank
-    If Target.Value <> "" Then
-        'okay we can now do whatever it is we need to do here
-        'likely need to include a msgbox that asks the user if they want to do X task with the selected file
+'verify we have only selected one cell
+If Target.Count = 1 Then
+    If Target.Row > hdrRow Then
+        'verify we are in the correct column
+        If Target.Column = hdrCol Then
+            'now verify that the selected cell isn't blank
+            If Target.Value <> "" Then
+                If MsgBox("Load data from " & Target.Value & "?", vbYesNo) = vbYes Then
+                    'do stuff
+                End If
+            End If
+        End If
     End If
 End If
-
 End Sub
