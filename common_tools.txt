@@ -380,7 +380,9 @@ Else
     End If
 End If
 End Function
-Function addSheet(shtnm, Optional bk As Workbook = Nothing, Optional clear_cells = True, Optional copy_from_sheet = "") As Worksheet
+Function addSheet(shtnm, Optional bk As Workbook = Nothing, Optional clear_cells = True, Optional copy_from_sheet = "", _
+    Optional after_sheet = "") As Worksheet
+Dim tmp As Worksheet
 'depends on WorksheetExists
 'note on copy_from_sheet: this will delete the current sheet if it exists
 If bk Is Nothing Then
@@ -388,12 +390,24 @@ If bk Is Nothing Then
 Else
     bk.Activate
 End If
+vis = "v"
 If WorksheetExists(CStr(shtnm), bk) Then
     If copy_from_sheet <> "" Then
         Application.DisplayAlerts = False
         bk.Sheets(shtnm).Delete
         Application.DisplayAlerts = True
-        bk.Sheets(copy_from_sheet).Copy after:=bk.Sheets(copy_from_sheet)
+        Set tmp = bk.Sheets(copy_from_sheet)
+        If tmp.visible = xlSheetHidden Then
+            vis = "h"
+        ElseIf tmp.visible = xlSheetVeryHidden Then
+            vis = "vh"
+        End If
+        tmp.visible = xlSheetVisible
+        If after_sheet <> "" Then
+            bk.Sheets(copy_from_sheet).Copy after:=bk.Sheets(after_sheet)
+        Else
+            bk.Sheets(copy_from_sheet).Copy after:=bk.Sheets(copy_from_sheet)
+        End If
         Set sht = ActiveSheet
         sht.Name = shtnm
     Else
@@ -404,13 +418,33 @@ If WorksheetExists(CStr(shtnm), bk) Then
     End If
 Else
     If copy_from_sheet <> "" Then
-        bk.Sheets(copy_from_sheet).Copy after:=bk.Sheets(copy_from_sheet)
+        Set tmp = bk.Sheets(copy_from_sheet)
+        If tmp.visible = xlSheetHidden Then
+            vis = "h"
+        ElseIf tmp.visible = xlSheetVeryHidden Then
+            vis = "vh"
+        End If
+        tmp.visible = xlSheetVisible
+        If after_sheet <> "" Then
+            bk.Sheets(copy_from_sheet).Copy after:=bk.Sheets(after_sheet)
+        Else
+            bk.Sheets(copy_from_sheet).Copy after:=bk.Sheets(copy_from_sheet)
+        End If
         Set sht = ActiveSheet
         sht.Name = shtnm
     Else
-        Set sht = Sheets.Add
+        If after_sheet <> "" Then
+            Set sht = Sheets.Add(after:=bk.Sheets(after_sheet))
+        Else
+            Set sht = Sheets.Add
+        End If
         sht.Name = shtnm
     End If
+End If
+If vis = "h" Then
+    tmp.visible = xlSheetHidden
+ElseIf vis = "vh" Then
+    tmp.visible = xlSheetVeryHidden
 End If
 Set addSheet = sht
 End Function
@@ -848,3 +882,67 @@ Else
 End If
 dateInfo = Array(yr, qtr, Format(Replace(dt, "T00:00:00", ""), "[$-409]mmmm;@"))
 End Function
+Function values_between(strt, stp, Optional step = 1)
+'returns an array consisting of all values starting with strt, and ending with stp proceeding at a step of step
+'right now just supports integers
+
+'case, stp - strt - 1 is a multiple of step
+'then we create an array of (stp - strt - 1)/step
+'
+'case, stp - strt - 1 is not a multiple of step
+'then stp - strt - 1 is not an integer and we need an array
+'of size floor((stp - strt - 1)/step) + 1?????
+
+If WorksheetFunction.Floor((stp - strt) / step, 1) = (stp - strt) / step Then
+    ub = (stp - strt) / step
+Else
+    ub = WorksheetFunction.Floor((stp - strt) / step, 1) + 1
+End If
+'MsgBox ub
+ReDim vls(0 To ub)
+vls(0) = strt
+For i = LBound(vls) + 1 To UBound(vls)
+    vls(i) = vls(i - 1) + step
+Next i
+values_between = vls
+End Function
+
+Sub refreshFilesList(sht As Worksheet, file_list_hdr, sub_dir)
+
+'NOTE: this macro only updates a file list on the provided sheet, it won't link any macros to be
+'      run when selecting cells with these file names, this must be done separately
+'      Also, any cell values underneath the header (file_list_hdr) cell will be deleted
+'
+'NOTE: This procedure uses FileSystemObject and will not interfere with calls to Dir
+'
+
+Dim fso As Object, fls As Object
+
+'tmp vars
+'Dim sht As Worksheet
+'Set sht = ThisWorkbook.Sheets("controls")
+'file_list_hdr = "available files"
+'sub_dir = "CO_Sitter_complete_workbooks"
+
+'begin macro
+'find the header for the list
+hdr = Split(sht.Cells.Find(what:=file_list_hdr, lookat:=xlWhole).Address, "$", 3)
+hdr = Array(hdr(1), hdr(2)) 'hdr(0) is now the column as a letter, and hdr(1) is the row
+
+'delete any values below this header list
+sht.Range(hdr(0) & hdr(1) + 1 & ":" & hdr(0) & sht.Range(hdr(0) & hdr(1)).End(xlDown).Row).Clear
+
+'get the files and list them below the file list header cell
+Set fso = CreateObject("Scripting.FileSystemObject")
+Set fld = fso.getfolder(sht.Parent.Path & "\" & sub_dir)
+i = 1 'offset for where to list files names
+For Each fl In fld.Files
+    sht.Range(hdr(0) & hdr(1) + i).Value = fl.Name
+    
+    i = i + 1
+Next fl
+
+'add formatting to make it look interactive
+sht.Range(hdr(0) & hdr(1) + 1 & ":" & hdr(0) & sht.Range(hdr(0) & hdr(1)).End(xlDown).Row).Style = "Linked Cell"
+
+End Sub
