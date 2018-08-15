@@ -946,3 +946,27 @@ Next fl
 sht.Range(hdr(0) & hdr(1) + 1 & ":" & hdr(0) & sht.Range(hdr(0) & hdr(1)).End(xlDown).Row).Style = "Linked Cell"
 
 End Sub
+
+Sub generic_file_link_macro()
+'general macro for use with available files list in a workbook
+'place this macro in the "Worksheet_SelectionChange" procedure of a sheet you wish to use it on
+'it should have a default argument named target
+
+Dim sht As Worksheet
+Set sht = ActiveSheet   'that is this sheet since there is a selection change here
+
+'change this variable name to reflect the header name of the file list
+file_list_hdr = "available files"
+
+'first verify we are in a cell beneath the header
+hdrRow = sht.Cells.Find(what:=file_list_hdr, lookat:=xlWhole).Row
+
+If Target.Row > hdrRow Then
+    'now verify that the selected cell isn't blank
+    If Target.Value <> "" Then
+        'okay we can now do whatever it is we need to do here
+        'likely need to include a msgbox that asks the user if they want to do X task with the selected file
+    End If
+End If
+
+End Sub
