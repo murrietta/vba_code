@@ -360,23 +360,28 @@ For Each cl In rng
         End If
     End If
 Next cl
-arr = Right(arr, Len(arr) - 1)
-arr = Split(arr, vbLf, 1 + Len(arr) - Len(Replace(arr, vbLf, "")))
-If asVal Then
-    If IsArray(arr) Then
-        ReDim arr2(LBound(arr) To UBound(arr))
-        For i = LBound(arr) To UBound(arr)
-            arr2(i) = Val(arr(i))
-        Next i
-        rangeToArr = arr2
-    Else
-        rangeToArr = ""
-    End If
+
+If Len(arr) = 0 Then
+    rangeToArr = ""
 Else
-    If IsArray(arr) Then
-        rangeToArr = arr
+    arr = Right(arr, Len(arr) - 1)
+    arr = Split(arr, vbLf, 1 + Len(arr) - Len(Replace(arr, vbLf, "")))
+    If asVal Then
+        If IsArray(arr) Then
+            ReDim arr2(LBound(arr) To UBound(arr))
+            For i = LBound(arr) To UBound(arr)
+                arr2(i) = Val(arr(i))
+            Next i
+            rangeToArr = arr2
+        Else
+            rangeToArr = ""
+        End If
     Else
-        rangeToArr = ""
+        If IsArray(arr) Then
+            rangeToArr = arr
+        Else
+            rangeToArr = ""
+        End If
     End If
 End If
 End Function
@@ -637,7 +642,7 @@ Function GetChartRange(cht As Chart, series As Integer, _
 End Function
 
 
-Function datesBetween(dts, Optional fmt = "", Optional append = "", Optional spacing = "days")
+Function datesBetween(dts, Optional fmt = "", Optional append = "", Optional spacing = "days", Optional increment = 1)
 'added optional fmt and optional append, an example usage is
 'dts = comtools.datesBetween(array("4/1/2017","4/31/2017"),fmt:="yyyy-mm-dd",append:="T00:00:00")
 'values will look like 2017-04-01T00:00:00, ..., 2017-04-31T00:00:00, useful for filtering date attributes in the DW
@@ -653,12 +658,13 @@ ElseIf spacing = "years" Then
 End If
     
 N = DateDiff(sp, dts(0), dts(1))
+N = WorksheetFunction.Floor(N / increment, 1)
 ReDim dt(0 To N)
 For i = 0 To N
     If fmt <> "" Then
-        dt(i) = Format(DateAdd(sp, i, dts(0)), fmt)
+        dt(i) = Format(DateAdd(sp, i * increment, dts(0)), fmt)
     Else
-        dt(i) = DateAdd(sp, i, dts(0))
+        dt(i) = DateAdd(sp, i * increment, dts(0))
     End If
     If append <> "" Then
         dt(i) = dt(i) & append
@@ -775,7 +781,7 @@ Application.CutCopyMode = False
 tbk.Close False
 Set importSheetFromWorkbook = tsht
 End Function
-Sub multiSort(sht As Worksheet, flds, Optional orders = "", Optional hdrRow = 1)
+Sub multiSort(sht As Worksheet, flds, Optional orders = "", Optional hdrRow = 1, Optional stCol = "A")
 'input:
 '   sht is a worksheet
 '   flds is an array containing header names
@@ -785,6 +791,8 @@ Sub multiSort(sht As Worksheet, flds, Optional orders = "", Optional hdrRow = 1)
 '
 'Note that this procedure is really designed to work with data that contains a single range on the worksheet
 '
+
+Dim rng As Range
 
 'first find last row
 shtLR = Split(sht.UsedRange.Address, "$", 5)(4)
@@ -806,8 +814,15 @@ For i = LBound(flds) To UBound(flds)
     End If
     sht.Sort.SortFields.Add Key:=sht.Range(col & "2:" & col & shtLR), SortOn:=xlSortOnValues, Order:=orders(i), DataOption:=xlSortNormal
 Next i
+If hdrRow <> 1 Then
+    rngLR = sht.Range(stCol & hdrRow).End(xlDown).Row
+    rngLC = Split(sht.Range(stCol & hdrRow).End(xlToRight).Address, "$")(1)
+    Set rng = sht.Range(stCol & hdrRow & ":" & rngLC & rngLR)
+Else
+    Set rng = sht.UsedRange
+End If
 With sht.Sort
-    .SetRange sht.UsedRange
+    .SetRange rng
     .Header = xlYes
     .MatchCase = False
     .Orientation = xlTopToBottom
@@ -828,8 +843,10 @@ Else
 End If
 End Function
 
-Sub makeBorders(rng As Range)
-    borderArr = Array(xlEdgeLeft, xlEdgeTop, xlEdgeBottom, xlEdgeRight, xlInsideVertical, xlInsideHorizontal)
+Sub makeBorders(rng As Range, Optional borderArr = "")
+    If IsArray(borderArr) = False Then
+        borderArr = Array(xlEdgeLeft, xlEdgeTop, xlEdgeBottom, xlEdgeRight, xlInsideVertical, xlInsideHorizontal)
+    End If
 '    Selection.Borders(xlDiagonalDown).LineStyle = xlNone
 '    Selection.Borders(xlDiagonalUp).LineStyle = xlNone
     For i = LBound(borderArr) To UBound(borderArr)
@@ -977,3 +994,48 @@ If Target.Count = 1 Then
     End If
 End If
 End Sub
+Sub union_datasets(target_sht As Worksheet, source_sht As Worksheet, Optional shdrRow = 1, _
+    Optional ttopRow = 1, Optional tfirstCol = "a")
+'first find the last row
+On Error Resume Next
+target_shtLR = Split(target_sht.UsedRange.Address, "$", 5)(4)
+If IsEmpty(target_shtLR) Then 'then there was no usedrange and we are going to write to row 1
+    target_shtLR = ttopRow - 1
+    topRow = shdrRow 'indicates we need to get the header on our copy from the sheet
+Else
+    topRow = shdrRow + 1 'indicates we already have other data and (hopefully) the header, no need to copy it
+End If
+On Error GoTo 0
+
+'now copy the data from source_sht
+source_shtLR = Split(source_sht.UsedRange.Address, "$", 5)(4)
+source_shtLC = Split(source_sht.UsedRange.Address, "$", 5)(3)
+source_sht.Range("A" & topRow & ":" & source_shtLC & source_shtLR).Copy
+target_sht.Range(tfirstCol & target_shtLR + 1).PasteSpecial xlPasteValuesAndNumberFormats
+Application.CutCopyMode = xlCopy
+End Sub
+Function getColumnNumbers(sht As Worksheet, colLabels, Optional hdrRow = 1, Optional asValues = False)
+Dim cl As Range
+colNumbers = ""
+For i = LBound(colLabels) To UBound(colLabels)
+    Set cl = sht.Range(hdrRow & ":" & hdrRow).Find(what:=colLabels(i), lookat:=xlWhole)
+    If Not cl Is Nothing Then
+        colNumbers = colNumbers & vbLf & cl.Column
+    End If
+Next i
+
+colNumbers = Right(colNumbers, Len(colNumbers) - 1)
+colNumbers = Split(colNumbers, vbLf)
+
+If asValues Then
+    ReDim colNums(LBound(colNumbers) To UBound(colNumbers))
+    For i = LBound(colNumbers) To UBound(colNumbers)
+        colNums(i) = Val(colNumbers(i))
+    Next i
+    getColumnNumbers = colNums
+Else
+    getColumnNumbers = colNumbers
+End If
+End Function
+
+

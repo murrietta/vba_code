@@ -331,9 +331,11 @@ pvt.RepeatAllLabels xlRepeatLabels
 pvt.ColumnGrand = False
 pvt.RowGrand = False
 For Each pf In pvt.PivotFields
-    If pf.caption <> "Values" And pf.IsCalculated = False Then
-        pf.Subtotals = Array(False, False, _
-            False, False, False, False, False, False, False, False, False, False)
+    If pf.caption <> "Values" Then
+        If pf.IsCalculated = False Then
+            pf.Subtotals = Array(False, False, _
+                False, False, False, False, False, False, False, False, False, False)
+        End If
     End If
 Next pf
 End Sub
@@ -397,7 +399,9 @@ Else
     End If
 End If
 End Sub
-Sub addFieldToPvt(pvt As PivotTable, fld, Optional fldOrient = xlRowField, Optional position = "", Optional caption = "", Optional data_function = xlCount, Optional preFilter = "")
+Sub addFieldToPvt(pvt As PivotTable, fld, Optional fldOrient = xlRowField, Optional position = "", _
+    Optional caption = "", Optional data_function = xlCount, Optional preFilter = "", _
+    Optional filter_blank = False)
 Dim p As PivotItem
 If UBound(Filter(Array(xlColumnField, xlDataField, xlHidden, xlPageField, xlRowField), fldOrient)) = -1 Then
     Debug.Print Err
@@ -412,6 +416,10 @@ Else
                 p.visible = False
             End If
         Next p
+        If filter_blank Then
+            'filter out blank as well
+            pvt.PivotFields(fld).PivotItems("").visible = False
+        End If
     End If
     If fldOrient = xlDataField Then
         If UBound(Filter(Array(xlAverage, xlCount, xlCountNums, xlMax, xlMin, xlProduct, xlStDev, xlStDevP, xlSum, xlUnknown, xlVar, xlVarP), data_function)) = -1 Then
@@ -440,3 +448,7 @@ For Each pf In pvt.PivotFields
 Next pf
 On Error GoTo 0
 End Sub
+
+
+
+
